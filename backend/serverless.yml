@@ -1,0 +1,239 @@
+org: freeleons
+app: serverless-GroceryList-app
+service: serverless-GroceryList-app
+
+custom:
+  webpack:
+    webpackConfig: ./webpack.config.js
+    includeModules: true
+
+plugins:
+  - serverless-webpack
+  - serverless-iam-roles-per-function
+  - serverless-plugin-tracing
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+
+  tracing:
+    lambda: true
+    apiGateway: true
+
+  # Use these variables in the functions and resouorces section below. For example, 
+  # ${self:provider.environment.ATTACHMENT_S3_BUCKET}
+  environment:
+    GroceryListS_TABLE: GroceryLists-${self:provider.stage}
+    GroceryListS_CREATED_AT_INDEX: CreatedAtIndex
+    ATTACHMENT_S3_BUCKET: freeleons-serverless-s3-GroceryList-images-${self:provider.stage}
+    SIGNED_URL_EXPIRATION: 300
+
+  logs:
+    # Enable API Gateway logs
+    restApi: true
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - xray:PutTelemetryRecords
+            - xray:PutTraceSegments
+          Resource: "*"
+
+
+functions:
+
+  Auth:
+    handler: src/lambda/auth/auth0Authorizer.handler
+
+  # Provide iamRoleStatements property for performing Actions on DynamoDB
+  GetGroceryLists:
+    handler: src/lambda/http/getGroceryLists.handler
+    events:
+      - http:
+          method: get
+          path: GroceryLists
+          cors: true
+          authorizer:
+            name: Auth
+            resultTtlInSeconds: 0
+            identitySource: method.request.header.Authorization
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:Query
+        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GroceryListS_TABLE}"
+
+  # Provide iamRoleStatements property. Decide the Actions and AWS Resource. 
+  # To refer to an AWS resource defined in the "Resources" section, you can use "Resource: !GetAtt <resource-name>.Arn"
+  # To validate incoming HTTP requests, we have provided the request schemas in function definition below. 
+  CreateGroceryList:
+    handler: src/lambda/http/createGroceryList.handler
+    events:
+      - http:
+          method: post
+          path: GroceryLists
+          cors: true
+          authorizer:
+            name: Auth
+            resultTtlInSeconds: 0
+            identitySource: method.request.header.Authorization
+          request:
+            schemas:
+              application/json: ${file(models/create-GroceryList-model.json)}
+    iamRoleStatements:
+       - Effect: Allow
+         Action:
+          - dynamodb:PutItem
+         Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GroceryListS_TABLE}"
+       - Effect: Allow
+         Action:
+          - s3:PutObject
+         Resource: "arn:aws:s3:::${self:provider.environment.ATTACHMENT_S3_BUCKET}/*"
+
+  # Provide property for setting up CORS, Authorizer, iamRoleStatements, and request schemas
+  UpdateGroceryList:
+    handler: src/lambda/http/updateGroceryList.handler
+    events:
+      - http:
+          method: patch
+          path: GroceryLists/{GroceryListId}
+          cors: true
+          authorizer:
+            name: Auth
+            resultTtlInSeconds: 0
+            identitySource: method.request.header.Authorization
+          request:
+              schemas:
+                application/json: ${file(models/update-GroceryList-model.json)}
+    iamRoleStatements:
+        - Effect: Allow
+          Action:
+              - dynamodb:UpdateItem
+          Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GroceryListS_TABLE}"
+
+  # Provide property for setting up CORS, Authorizer, iamRoleStatements
+  DeleteGroceryList:
+    handler: src/lambda/http/deleteGroceryList.handler
+    events:
+      - http:
+          method: delete
+          path: GroceryLists/{GroceryListId}
+          cors: true
+          authorizer:
+            name: Auth
+            resultTtlInSeconds: 0
+            identitySource: method.request.header.Authorization
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:DeleteItem
+        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GroceryListS_TABLE}"
+
+  # Provide property for setting up CORS, Authorizer, iamRoleStatements
+  GenerateUploadUrl:
+    handler: src/lambda/http/generateUploadUrl.handler
+    events:
+      - http:
+          method: post
+          path: GroceryLists/{GroceryListId}/attachment
+          cors: true
+          authorizer:
+            name: Auth
+            resultTtlInSeconds: 0
+            identitySource: method.request.header.Authorization
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+          - s3:GetObject
+        Resource: "arn:aws:s3:::${self:provider.environment.ATTACHMENT_S3_BUCKET}/*"
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: "arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GroceryListS_TABLE}"
+
+resources:
+  Resources:
+    # Add necessary AWS resources. You will need at least the following AWS resources
+    # Feel free to change the names as you like. 
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+
+    GroceryListsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.GroceryListS_TABLE}
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: GroceryListId
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: GroceryListId
+            KeyType: RANGE
+        LocalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.GroceryListS_CREATED_AT_INDEX}
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+
+    # Do not forget to add the CorsConfiguration propoerty
+    AttachmentsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.ATTACHMENT_S3_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedHeaders:
+                - "*"
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+              AllowedOrigins:
+                - "*"
+              MaxAge: 93000
+
+    # For cross referencing the name of the bucket, use "!Ref AttachmentsBucket"
+    BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref AttachmentsBucket
+        PolicyDocument:
+          Id: MyPolicy
+          Version: "2012-10-17"
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: "*"
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: "arn:aws:s3:::${self:provider.environment.ATTACHMENT_S3_BUCKET}/*"
+
+
