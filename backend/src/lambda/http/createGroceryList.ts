@@ -16,6 +16,15 @@ export const handler = middy(
         const createNewGroceryListRequest: CreateGroceryListRequest = JSON.parse(event.body)
         const GroceryListId = uuid.v4()
         const userId = getUserId(event)
+        if (!createNewGroceryListRequest.name) {
+            return {
+                statusCode: 400,
+                body: JSON.stringify({
+                    error: 'Must supply a name for the new todo.'
+                })
+            }
+        }
+
         const newItem = await createGroceryList(createNewGroceryListRequest, userId, GroceryListId)
         return {
             statusCode: 201,
