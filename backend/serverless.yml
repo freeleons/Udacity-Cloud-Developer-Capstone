@@ -1,6 +1,6 @@
 org: freeleons
-app: serverless-GroceryList-app
-service: serverless-GroceryList-app
+app: serverless-grocery-list-app
+service: serverless-grocery-list-app
 
 custom:
   webpack:
@@ -28,7 +28,7 @@ provider:
   environment:
     GroceryListS_TABLE: GroceryLists-${self:provider.stage}
     GroceryListS_CREATED_AT_INDEX: CreatedAtIndex
-    ATTACHMENT_S3_BUCKET: freeleons-serverless-s3-GroceryList-images-${self:provider.stage}
+    ATTACHMENT_S3_BUCKET: freeleons-serverless-s3-grocerylist-images-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
 
   logs:
@@ -56,7 +56,7 @@ functions:
     events:
       - http:
           method: get
-          path: GroceryLists
+          path: GroceryList
           cors: true
           authorizer:
             name: Auth
@@ -77,7 +77,7 @@ functions:
     events:
       - http:
           method: post
-          path: GroceryLists
+          path: GroceryList
           cors: true
           authorizer:
             name: Auth
@@ -102,7 +102,7 @@ functions:
     events:
       - http:
           method: patch
-          path: GroceryLists/{GroceryListId}
+          path: GroceryList/{GroceryListId}
           cors: true
           authorizer:
             name: Auth
@@ -123,7 +123,7 @@ functions:
     events:
       - http:
           method: delete
-          path: GroceryLists/{GroceryListId}
+          path: GroceryList/{GroceryListId}
           cors: true
           authorizer:
             name: Auth
@@ -141,7 +141,7 @@ functions:
     events:
       - http:
           method: post
-          path: GroceryLists/{GroceryListId}/attachment
+          path: GroceryList/{GroceryListId}/attachment
           cors: true
           authorizer:
             name: Auth
@@ -167,7 +167,7 @@ resources:
       Properties:
         ResponseParameters:
           gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
-          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'*'"
           gatewayresponse.header.Access-Control-Allow-Methods: "'OPTIONS,GET,PUT,POST,DELETE'"
         ResponseType: DEFAULT_4XX
         RestApiId:
